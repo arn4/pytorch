@@ -475,6 +475,7 @@ class ROCmConfigHeuristic(BaseConfigHeuristic):
                         num_warps,
                     ),
                     matrix_instr_nonkdim,
+                    kpack
                 ) not in used and (
                     max_mm_configs is None or len(used) < max_mm_configs
                 ):
