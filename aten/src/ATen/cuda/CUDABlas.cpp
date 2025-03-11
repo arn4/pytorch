@@ -226,19 +226,28 @@ void* _getWorkspaceWithoutHandle() {
   return workspace_it->second.mutable_get();
 }
 
-void* _getWorkspace(size_t& workspaceSize) {
-#if (defined(USE_ROCM) || defined(FBCODE_CAFFE2))
-  workspaceSize = _getWorkspaceSize();
-  auto& allocator = *::c10::cuda::CUDACachingAllocator::get();
-  auto workspace = allocator.allocate(workspaceSize);
-  auto workspace_ptr = workspace.mutable_get();
-  TORCH_CHECK(workspace_ptr != nullptr, "OOM trying to allocate workspace for cublaslt");
-#else
-  workspaceSize = at::cuda::getChosenWorkspaceSize();
-  auto workspace_ptr = _getWorkspaceWithoutHandle();
-#endif
-  return workspace_ptr;
-}
+struct _CublasltWorkspace {
+  _CublasltWorkspace() = delete;
+  _CublasltWorkspace(size_t& workspaceSize) {
+    #if (defined(USE_ROCM) || defined(FBCODE_CAFFE2))
+      workspaceSize = _getWorkspaceSize();
+      auto& allocator = *::c10::cuda::CUDACachingAllocator::get();
+      workspace = allocator.allocate(workspaceSize);
+      workspace_ptr = workspace.mutable_get();
+      TORCH_INTERNAL_ASSERT(workspace_ptr != nullptr, "OOM trying to allocate workspace for cublaslt");
+    #else
+      workspaceSize = at::cuda::getChosenWorkspaceSize();
+      // don't need to set internal workspace, reusing cuBLAS workspace
+      workspace_ptr = _getWorkspaceWithoutHandle();
+    #endif
+  }
+  void* mutable_get() {
+    return workspace_ptr;
+  }
+private:
+  c10::DataPtr workspace;
+  void* workspace_ptr = nullptr;
+};
 
 } // anonymous namespace
 
@@ -430,9 +439,9 @@ static inline void bgemm_internal_cublaslt(CUDABLAS_BGEMM_ARGTYPES(Dtype)) {
 
   CuBlasLtMatmulPreference preference;
   size_t workspaceSize = 0;
-  auto workspace_ptr = _getWorkspace(workspaceSize);
+  auto workspace =  _CublasltWorkspace(workspaceSize);
+  auto workspace_ptr = workspace.mutable_get();
   preference.setAttribute(CUBLASLT_MATMUL_PREF_MAX_WORKSPACE_BYTES, workspaceSize);
-
 #ifndef USE_ROCM
   uint32_t a_alignment = _getAlignment(reinterpret_cast<uintptr_t>(a));
   uint32_t b_alignment = _getAlignment(reinterpret_cast<uintptr_t>(b));
@@ -1368,7 +1377,8 @@ void gemm_and_bias(
 
   CuBlasLtMatmulPreference preference;
   size_t workspaceSize = 0;
-  auto workspace_ptr = _getWorkspace(workspaceSize);
+  auto workspace =  _CublasltWorkspace(workspaceSize);
+  auto workspace_ptr = workspace.mutable_get();
   preference.setAttribute(CUBLASLT_MATMUL_PREF_MAX_WORKSPACE_BYTES, workspaceSize);
 
 #ifndef USE_ROCM
@@ -1596,7 +1606,8 @@ void scaled_gemm(
 
   auto stream = c10::cuda::getCurrentCUDAStream();
   size_t workspaceSize = 0;
-  auto workspace_ptr = _getWorkspace(workspaceSize);
+  auto workspace =  _CublasltWorkspace(workspaceSize);
+  auto workspace_ptr = workspace.mutable_get();
   CuBlasLtMatmulPreference preference;
   preference.setAttribute(CUBLASLT_MATMUL_PREF_MAX_WORKSPACE_BYTES, workspaceSize);
   cublasLtMatmulHeuristicResult_t heuristicResult = {};
