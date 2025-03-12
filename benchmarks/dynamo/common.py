@@ -3593,6 +3593,7 @@ def run(runner, args, original_dir=None):
             torch.use_deterministic_algorithms(True)
         os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
         if args.only is not None and args.only in {
+            "crossvit_9_240",
             "DebertaForQuestionAnswering",
             "RobertaForQuestionAnswering",
             "nvidia_deeprecommender",
