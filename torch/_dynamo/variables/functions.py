@@ -923,6 +923,16 @@ class UserMethodVariable(UserFunctionVariable):
         if self.is_constant:
             fn = getattr(self.obj.value, self.fn.__name__)
             return invoke_and_store_as_constant(tx, fn, self.get_name(), args, kwargs)
+
+        if (
+            isinstance(self.obj, variables.UserDefinedClassVariable)
+            and (make := inspect.getattr_static(self.obj.value, "_make", None))
+            and self.fn is make.__func__
+        ):
+            return variables.NamedTupleVariable(
+                args[0].force_unpack_var_sequence(tx), self.obj.value
+            )
+
         return super().call_function(tx, args, kwargs)
 
     def inspect_parameter_names(self):
@@ -1077,6 +1087,11 @@ class NestedUserFunctionVariable(BaseUserFunctionVariable):
 
     def has_closure(self):
         return self.closure is not None
+
+    def const_getattr(self, tx, name):
+        if name == "__name__":
+            return self.fn_name.as_python_constant()
+        return super().const_getattr(tx, name)
 
     def has_self(self):
         return False
