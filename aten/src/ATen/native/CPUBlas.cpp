@@ -343,7 +343,6 @@ void gemm(
    }
 #endif
 #if AT_MKLDNN_ENABLED()
-   const bool use_bf16_gemv_trans = false;
 #elif defined(__powerpc__)
    const bool use_bf16_gemv_trans = false;
 #else
@@ -352,7 +351,6 @@ void gemm(
    const bool use_bf16_gemv_trans = bf16_gemv_trans_would_be_faster &&
      transa == TransposeType::Transpose &&
      transb == TransposeType::NoTranspose && n == 1 && alpha == 1.0;
-#endif
    if (!use_bf16_gemv_trans && mkldnn_bf16_gemm(transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc)) {
      return;
    }
